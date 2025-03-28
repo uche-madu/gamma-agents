@@ -123,7 +123,7 @@ def data_ingestion_node(state: State, config: RunnableConfig):
         # Retrieve stock data using yfinance; get maximum historical data.
         stock = yf.Ticker(symbol)
         # Fetch historical data; you can adjust period (e.g., "max", "5y", etc.)
-        df = stock.history(period="10y")
+        df = stock.history(period="6mo")
         
         # Ensure that the DataFrame has a datetime index.
         df.index = pd.to_datetime(df.index)
