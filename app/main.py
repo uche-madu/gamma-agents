@@ -1,6 +1,12 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.routers import analyze_stock
+
+# Create the reports directory if it doesn't exist
+REPORT_DIR = "static/reports"
+os.makedirs(REPORT_DIR, exist_ok=True)
 
 app = FastAPI(
     title="Stock Analysis API",
@@ -21,6 +27,9 @@ app.add_middleware(
     allow_methods=["*"],  # Allow all methods
     allow_headers=["*"],  # Allow all headers
 )
+
+# Mount the static folder for reports
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(analyze_stock.router)
 

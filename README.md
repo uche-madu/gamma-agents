@@ -13,13 +13,22 @@ This system supports **human-in-the-loop analysis** by allowing analysts to **re
 - **Report Generation & Visualization:** Generates insights, tabulated reports, and graphical representations of trends.
 - **Interactive Analyst Review:** Analysts can review, modify, and enhance generated insights before final reports are created.
 - **Human-in-the-Loop Processing:** LangGraph’s interrupt function enables workflow pausing and resuming after expert review.
+- **Evaluation Metrics:** Implements accuracy metrics (e.g., RMSE, MAPE) to assess model performance.
 
 ## Tech Stack
 
 - **LangGraph** - Modular pipeline framework
-- **FastAPI** - API backend
+- **FastAPI** - API backend (Hosted on Render: [Gamma Agents API](https://gamma-agents.onrender.com))
 - **Python** (NumPy, Pandas, Scikit-learn, Statsmodels, Matplotlib, Seaborn, Tabulate)
 - **Groq API (Llama 3.3-70B Versatile LLM)** - AI-powered insights
+
+## API Access
+
+The hosted backend API can be accessed via:
+
+- Swagger UI: [Gamma Agents Docs](https://gamma-agents.onrender.com/docs)
+  
+- Redoc UI: [Gamma Agents Redoc](https://gamma-agents.onrender.com/redoc)
 
 ## Installation & Setup
 
@@ -153,6 +162,12 @@ def stock_ticker_tool(
 ```
 
 This tool is **bound to the LLM** and executed during the workflow to retrieve relevant stock data.
+
+## Evaluation Metrics
+
+To ensure the accuracy and effectiveness of the predictive models, we use the following evaluation metrics:
+
+- **Mean Absolute Error (MAE):** Calculates the average magnitude of prediction errors.
 
 ## Areas for Improvement
 

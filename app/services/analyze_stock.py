@@ -1,22 +1,21 @@
+import pickle
+import os
+import io
+from io import BytesIO, StringIO
+from PIL import Image as PilImage
+import warnings
+import uuid
+from pathlib import Path
 
 from typing_extensions import Annotated
 from loguru import logger
-import requests
-import uuid
 import pandas as pd
 import numpy as np
 import pmdarima as pm
 from pmdarima.model_selection import train_test_split
-import matplotlib.pyplot as plt
-from io import BytesIO, StringIO
-import pickle
-import os
-import io
-from PIL import Image as PilImage
-import warnings
-
 from fpdf import FPDF
 import seaborn as sns
+import matplotlib.pyplot as plt
 from langgraph.graph import StateGraph, END, START
 from langchain_core.runnables import RunnableConfig 
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -124,7 +123,7 @@ def data_ingestion_node(state: State, config: RunnableConfig):
         # Retrieve stock data using yfinance; get maximum historical data.
         stock = yf.Ticker(symbol)
         # Fetch historical data; you can adjust period (e.g., "max", "5y", etc.)
-        df = stock.history(period="12y")
+        df = stock.history(period="10y")
         
         # Ensure that the DataFrame has a datetime index.
         df.index = pd.to_datetime(df.index)
@@ -337,15 +336,6 @@ def model_training_evaluation_node(
 
     # Merge line_plot into state separately.
     state["line_plot"] = buf_line.getvalue()
-
-    # Human-in-the-loop interrupt (if needed; can be commented out during testing)
-    # logger.info("Awaiting human review via interrupt...")
-    # approval = interrupt("HITL: Please review the diagnostic and line plots and type 'approve' to continue.")
-    # if approval.lower() != "approve":
-    #     error_msg = "Human review not approved. Halting execution."
-    #     logger.error(error_msg)
-    #     return {"error": error_msg}
-    # logger.info("Human review approved. Proceeding with full model retraining.")
     
     # Retrain model on full data for future forecasting.
     target_full = enriched_df['close']
@@ -408,9 +398,9 @@ def report_generation_node(state: State, config: RunnableConfig):
     mae_value = diagnostics.get('MAE', 'N/A')
     mae_str = f"{mae_value:.2f}" if isinstance(mae_value, (int, float)) else "N/A"
 
-    # Create directory for temporary images
-    temp_img_dir = "temp_images"
-    os.makedirs(temp_img_dir, exist_ok=True)
+    # Create directory for report images
+    report_dir = "static/reports"
+    os.makedirs(report_dir, exist_ok=True)
 
     # Retrieve the diagnostic plot bytes from state
     diag_img_bytes = diagnostics.get("diagnostic_plot")
@@ -422,7 +412,7 @@ def report_generation_node(state: State, config: RunnableConfig):
     diag_img = PilImage.open(io.BytesIO(diag_img_bytes))
 
     # Save the image properly
-    diag_img_path = os.path.join(temp_img_dir, f"{ticker}_diagnostic_plot.png")
+    diag_img_path = os.path.join(report_dir, f"{ticker}_diagnostic_plot.png")
     diag_img.save(diag_img_path)
 
     # 📌 Retrieve the forecast line plot bytes from state
@@ -434,13 +424,13 @@ def report_generation_node(state: State, config: RunnableConfig):
     line_plot_img = PilImage.open(io.BytesIO(line_plot))
 
     # 📌 Save the forecast line plot image
-    line_plot_forecast_path = os.path.join(temp_img_dir, f"{ticker}_forecast_plot.png")
+    line_plot_forecast_path = os.path.join(report_dir, f"{ticker}_forecast_plot.png")
     line_plot_img.save(line_plot_forecast_path)
     
 
     # 📌 **Generate Visualizations**
     ## ✅ Bollinger Bands Plot
-    bollinger_plot_path = os.path.join(temp_img_dir, f"{ticker}_bollinger_plot.png")
+    bollinger_plot_path = os.path.join(report_dir, f"{ticker}_bollinger_plot.png")
     plt.figure(figsize=(12, 6))
     plt.plot(enriched_df.index, enriched_df["close"], label="Close Price", color="blue")
     plt.plot(enriched_df.index, enriched_df["bollinger_upper"], label="Upper Band", linestyle="dashed", color="red")
@@ -452,7 +442,7 @@ def report_generation_node(state: State, config: RunnableConfig):
     plt.close()
 
     ## ✅ Line Plot with Moving Averages
-    line_plot_path = os.path.join(temp_img_dir, f"{ticker}_line_plot.png")
+    line_plot_path = os.path.join(report_dir, f"{ticker}_line_plot.png")
     plt.figure(figsize=(12, 6))
     sns.lineplot(data=enriched_df, x=enriched_df.index, y="close", label="Close Price")
     sns.lineplot(data=enriched_df, x=enriched_df.index, y="sma_20", label="SMA 20")
@@ -463,7 +453,7 @@ def report_generation_node(state: State, config: RunnableConfig):
     plt.close()
 
     ## ✅ MACD Plot
-    macd_plot_path = os.path.join(temp_img_dir, f"{ticker}_macd_plot.png")
+    macd_plot_path = os.path.join(report_dir, f"{ticker}_macd_plot.png")
     plt.figure(figsize=(12, 4))
     plt.plot(enriched_df.index, enriched_df["macd"], label="MACD", color="blue")
     plt.plot(enriched_df.index, enriched_df["macd_signal"], label="Signal Line", color="red")
@@ -473,7 +463,7 @@ def report_generation_node(state: State, config: RunnableConfig):
     plt.close()
 
     ## ✅ Volume Trend Plot
-    volume_plot_path = os.path.join(temp_img_dir, f"{ticker}_volume_plot.png")
+    volume_plot_path = os.path.join(report_dir, f"{ticker}_volume_plot.png")
     plt.figure(figsize=(12, 4))
     plt.bar(enriched_df.index, enriched_df["volume"], color="gray")
     plt.title(f"{ticker} Trading Volume Trend")
@@ -482,7 +472,7 @@ def report_generation_node(state: State, config: RunnableConfig):
 
     if isinstance(forecast_data, dict):
         # Convert dict to a list of tuples for tabulate
-        forecast_table = tabulate(forecast_data.items(), headers=["Day", "Predicted Price"], tablefmt="fancy_grid")
+        forecast_table = tabulate(forecast_data.items(), headers=["Day", "Predicted Price"], tablefmt="pipe")
     else:
         forecast_table = str(forecast_data)  # Fallback in case it's an unexpected format
 
@@ -504,7 +494,7 @@ def report_generation_node(state: State, config: RunnableConfig):
     Recent Stock Performance (last 20 records):
     {recent_data_str}
     
-    Price Forecast for Next Week (5 Business Days):
+    Price Forecast for Next Week (the next 5 Business Days):
     {forecast_data}
     
     Provide comprehensive market insights including:
@@ -549,7 +539,7 @@ def report_generation_node(state: State, config: RunnableConfig):
         add_plot_page(pdf, f"{ticker} Forecast Plot", line_plot_forecast_path)
 
         # 📌 Save PDF
-        pdf_path = os.path.join(temp_img_dir, f"{ticker}_financial_report.pdf")
+        pdf_path = os.path.join(report_dir, f"{ticker}_financial_report.pdf")
         pdf.output(pdf_path)
 
         # 📌 Update Report Dictionary
@@ -613,7 +603,7 @@ graph.add_node("ingestion", data_ingestion_node)
 graph.add_node("enrichment", data_enrichment_node)
 graph.add_node("model_train_eval", model_training_evaluation_node)
 graph.add_node("report_generation", report_generation_node)
-graph.add_node("human_review", human_review_node)
+# graph.add_node("human_review", human_review_node)
 
 # Add edges.
 graph.add_edge(START, "agent")
@@ -623,8 +613,8 @@ graph.add_edge("agent", "ingestion")
 graph.add_edge("ingestion", "enrichment")
 graph.add_edge("enrichment", "model_train_eval")
 graph.add_edge("model_train_eval", "report_generation")
-graph.add_edge("report_generation", "human_review")
-graph.add_edge("human_review", END)
+graph.add_edge("report_generation", END)
+# graph.add_edge("human_review", END)
 
 # Set up memory
 memory = MemorySaver()
@@ -647,35 +637,168 @@ initial_state = {
     "insights": ""
 }
 
-async def analyze_stock(query: str, edited_insights: str) -> dict:
+# The function below is commented out to avoid confusion with the async version above.
+async def analyze_stock(query: str) -> dict:
     """
-    Asynchronously invoke the LangGraph workflow for stock analysis.
-    The workflow is resumed with the provided edited insights.
-    Returns a dictionary with the PDF report link (or path) and the final insights.
-    
+    Runs the stock analysis and generates a PDF report.
+    Returns the relative download path as `pdf_report`.
+
     Args:
-        query (str): The analyst's initial query (e.g., "I need to analyze Nvidia stock data.")
-        edited_insights (str): The feedback/edited insights provided by the analyst.
-        
-    Returns:
-        dict: A dictionary containing 'pdf_report' (the report path or URL) and 'insights'.
+        query (str): The analyst's initial query.
     """
-    # Build input data by merging the initial state with the query message.
     input_data = {
         "messages": [{"role": "user", "content": query}],
         **initial_state
     }
 
-    # Start the asynchronous stream; this runs the workflow until it hits the interrupt.
-    async for _ in app.astream(input_data, config, stream_mode="values"):
-        # Consume events without printing
-        pass
+    logger.debug(f"Before astream: {input_data}")
 
-    # Resume the workflow with the edited insights.
-    updated_state = await app.ainvoke(Command(resume={"edited_text": edited_insights}), config)
+    final_state = await app.ainvoke(input_data, config, stream_mode="values")
+
+    # Extract just the filename from the report data
+    pdf_filename = Path(final_state.get("report", {}).get("pdf_report", "")).name  
+
+    return {
+        "pdf_report": f"/static/reports/{pdf_filename}",
+        "insights": final_state.get("insights", "")
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# async def analyze_stock(query: str, edited_insights: str | None = None) -> dict:
+#     """
+#     Runs the stock analysis and generates a PDF report.
+#     If edited_insights is not provided, returns the AI-generated insights for review.
+#     If edited_insights is provided, resumes execution and generates the final report.
     
-    # Extract the PDF report link (or path) and final insights from the updated state.
-    pdf_report = updated_state.get("report", {}).get("pdf_report", "")
-    final_insights = updated_state.get("insights", "")
+#     Args:
+#         query (str): The analyst's initial query.
+#         edited_insights (str, optional): The feedback/edited insights provided by the analyst.
+        
+#     Returns:
+#         dict: Final output containing the PDF report path and the edited insights, 
+#               or a payload for review if awaiting human input.
+#     """
+#     # Build the initial input state with the query and your predefined state.
+#     input_data = {
+#         "messages": [{"role": "user", "content": query}],
+#         **initial_state  # your predefined state values
+#     }
 
-    return {"pdf_report": pdf_report, "insights": final_insights}
+#     logger.debug(f"Before astream: {input_data}")
+
+#     # Start the LangGraph pipeline; it runs until an interrupt is reached.
+#     async for _ in app.astream(input_data, config, stream_mode="values"):
+#         pass
+
+#     logger.debug("After astream (waiting for human review or resume)")
+
+#     # If edited insights are not provided, assume the pipeline was interrupted for human review.
+#     if edited_insights:
+#         updated_state = await app.ainvoke(Command(resume={"edited_text": edited_insights}), config)
+
+#         # Extract the PDF report filename from the updated state.
+#         pdf_filename = Path(updated_state.get("report", {}).get("pdf_report", "")).name  
+
+#         return {
+#             "pdf_report": f"/static/reports/{pdf_filename}",
+#             "insights": updated_state.get("insights", "")
+#         }
+    
+#     return {
+#             "message": "Review the AI-generated insights before finalizing the report.",
+#             "llm_generated_insights": ai_insights
+#         }
+
+
+
+
+
+
+# async def analyze_stock(query: str | None, edited_insights: str | None) -> dict:
+#     """
+#     Runs the stock analysis and generates a PDF report.
+#     Returns the relative download path as `pdf_report`.
+
+#     Args:
+#         query (str | None): The initial stock query (provided in the first run).
+#         edited_insights (str | None): The analyst's reviewed insights (provided in the second run).
+#     """
+#     input_data = {
+#         "messages": [{"role": "user", "content": query}] if query else [],
+#         **initial_state
+#     }
+
+#     logger.debug(f"Before astream: {input_data}")
+
+#     updated_state = input_data  # Default to initial state
+
+#     # First Run: Generate the report with AI insights
+#     if query:
+#         async for updated_state in app.astream(input_data, config, stream_mode="values"):
+#             logger.debug(f"Streaming update: {updated_state}")  # ✅ Log each update
+
+#         logger.debug(f"After astream (before ainvoke): {updated_state}")
+
+#     # Second Run: User has provided `edited_insights`, so we resume with it
+#     if edited_insights:
+#         updated_state = await app.ainvoke(Command(resume={"edited_text": edited_insights}), config)
+
+#     logger.debug(f"Updated state after ainvoke: {updated_state}")
+
+#     # Extract just the filename from the report data
+#     pdf_filename = Path(updated_state.get("report", {}).get("pdf_report", "")).name  
+
+#     return {
+#         "pdf_report": f"/static/reports/{pdf_filename}" if pdf_filename else None,
+#         "insights": updated_state.get("insights", "")
+#     }
+
+# # The function below is commented out to avoid confusion with the async version above.
+# async def analyze_stock(query: str, edited_insights: str) -> dict:
+#     """
+#     Runs the stock analysis and generates a PDF report.
+#     Returns the relative download path as `pdf_report`.
+
+#     Args:
+#         query (str): The analyst's initial query.
+#         edited_insights (str): The feedback/edited insights provided by the analyst.
+#     """
+#     input_data = {
+#         "messages": [{"role": "user", "content": query}],
+#         **initial_state
+#     }
+
+#     logger.debug(f"Before astream: {input_data}")
+
+#     async for _ in app.astream(input_data, config, stream_mode="values"):
+#         pass
+
+#     logger.debug(f"After astream (before ainvoke): {input_data}")
+
+#     updated_state = await app.ainvoke(Command(resume={"edited_text": edited_insights}), config)
+
+#     logger.debug(f"Updated state after ainvoke: {updated_state}")
+
+#     # Extract just the filename from the report data
+#     pdf_filename = Path(updated_state.get("report", {}).get("pdf_report", "")).name  
+
+#     return {
+#         "pdf_report": f"/static/reports/{pdf_filename}",
+#         "insights": updated_state.get("insights", "")
+#     }
+
+
+
